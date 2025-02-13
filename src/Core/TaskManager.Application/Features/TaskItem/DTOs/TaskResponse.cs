@@ -1,8 +1,16 @@
-﻿namespace TaskManager.Application.Features.TaskItem.DTOs;
+﻿using TaskManager.Domain.Enums;
+
+namespace TaskManager.Application.Features.TaskItem.DTOs;
 
 public record TaskResponse(
-    Guid Id,
+    
     string Title,
     string Description,
-    DateTime Deadline,
-    Guid UserId);
+    DateTime StartDate,
+    DateTime EndDate,
+    TaskFrequency? Frequency,
+    PriorityLevel PriorityLevel,
+    bool IsCompleted,
+    DateTime CreatedAt,
+    DateTime UpdatedAt
+    );
