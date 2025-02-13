@@ -1,57 +1,60 @@
-﻿using MediatR;
+﻿using System.Net;
+using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace TaskManager.Application.PipelineBehaviors
+namespace TaskManager.Application.PipelineBehaviors;
+
+public class ExceptionHandlingBehavior<TRequest, TResponse>(
+    ILogger<ExceptionHandlingBehavior<TRequest, TResponse>> logger)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
 {
-    public class ExceptionHandlingBehavior<TRequest, TResponse>(
-        ILogger<ExceptionHandlingBehavior<TRequest, TResponse>> logger)
-        : IPipelineBehavior<TRequest, TResponse>
-        where TRequest : notnull
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken cancellationToken)
     {
-        private HttpStatusCode GetStatusCode(Exception ex)
+        try
         {
-            // Otherwise, map known exceptions or use a default
-            return ex switch
-            {
-                ArgumentException _ => HttpStatusCode.BadRequest,
-                UnauthorizedAccessException _ => HttpStatusCode.Unauthorized,
-                _ => HttpStatusCode.InternalServerError
-            };
+            return await next();
         }
-
-        public async Task<TResponse> Handle(
-            TRequest request,
-            RequestHandlerDelegate<TResponse> next,
-            CancellationToken cancellationToken)
+        catch (Exception ex)
         {
-            try
+            logger.LogError(
+                ex,
+                "Unhandled exception for request {RequestName} {@Request}",
+                typeof(TRequest).Name,
+                request);
+
+            var statusCode = GetStatusCode(ex);
+
+            if (typeof(TResponse).IsGenericType &&
+                typeof(TResponse).GetGenericTypeDefinition() == typeof(ServiceResult<>))
             {
-                // Call the next delegate/middleware in the pipeline
-                return await next();
+                var innerType = typeof(TResponse).GetGenericArguments()[0];
+                var failureResponse = typeof(ServiceResult<>)
+                    .MakeGenericType(innerType)
+                    .GetMethod("Failure", new[] { typeof(string), typeof(HttpStatusCode) });
+
+                if (failureResponse is null)
+                    throw new InvalidOperationException("Failure method not found on ServiceResult.");
+
+                var result = failureResponse.Invoke(null,
+                    new object[] { "An error occurred while processing the request.", statusCode });
+                return (TResponse)result!;
             }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Unhandled exception for request {RequestName} {@Request}", typeof(TRequest).Name, request);
 
-                var statusCode = GetStatusCode(ex);
-
-                // Option: If TResponse is ServiceResult<T>, return a failure result.
-                if (typeof(TResponse).IsGenericType && typeof(TResponse).GetGenericTypeDefinition() == typeof(ServiceResult<>))
-                {
-                    // Create a failure result using your helper method. Adjust for generic support if needed.
-                    dynamic failureResult = ServiceResult.Failure("An error occurred while processing the request.", statusCode);
-                    return failureResult;
-                }
-
-                // Otherwise, rethrow the exception
-                throw;
-            }
+            throw;
         }
+    }
+
+    private static HttpStatusCode GetStatusCode(Exception ex)
+    {
+        return ex switch
+        {
+            ArgumentException _ => HttpStatusCode.BadRequest,
+            UnauthorizedAccessException _ => HttpStatusCode.Unauthorized,
+            _ => HttpStatusCode.InternalServerError
+        };
     }
 }
