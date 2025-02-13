@@ -129,29 +129,29 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = issuerSigningKey
     };
 
-    //options.Events = new JwtBearerEvents
-    //{
-    //    OnAuthenticationFailed = context =>
-    //    {
-    //        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-    //        logger.LogError("Authentication failed: {Exception}", context.Exception);
-    //        return Task.CompletedTask;
-    //    },
-    //    OnTokenValidated = context =>
-    //    {
-    //        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-    //        logger.LogInformation("Token validated for {User}", context.Principal.Identity.Name);
-    //        return Task.CompletedTask;
-    //    },
-    //    OnChallenge = async context =>
-    //    {
-    //        context.HandleResponse();
-    //        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-    //        context.Response.ContentType = "application/json";
-    //        await context.Response.WriteAsync(
-    //            JsonSerializer.Serialize(new { error = "Log in to access this resource" }));
-    //    }
-    //};
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogError("Authentication failed: {Exception}", context.Exception);
+            return Task.CompletedTask;
+        },
+        OnTokenValidated = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("Token validated for {User}", context.Principal.Identity.Name);
+            return Task.CompletedTask;
+        },
+        OnChallenge = async context =>
+        {
+            context.HandleResponse();
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = "Log in to create or list tasks" }));
+        }
+    };
 });
 
 
@@ -170,6 +170,11 @@ builder.Services.AddRateLimiter(options =>
 
 
 var app = builder.Build();
+
+
+app.UseAuthentication();
+
+app.UseAuthorization();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -195,9 +200,7 @@ app.UseCors("AllowAll");
 // Enforce HTTPS redirection for secure communication across the application.
 app.UseHttpsRedirection();
 
-app.UseAuthentication();
-// Enable authorization middleware to enforce security policies on incoming requests.
-app.UseAuthorization();
+
 
 app.MapControllers();
 
